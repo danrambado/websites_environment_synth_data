@@ -1,58 +1,53 @@
 """
 Comprehensive pytest tests for the Calendar Database Pipeline
-Tests data integrity, business logic, and SQL generation with MySQL
+Tests data integrity, business logic, and SQL generation with SQLite
 """
 
 import pytest
-import mysql.connector
+import sqlite3
 import time
 from pathlib import Path
 
 
 class TestCalendarPipeline:
-    """Test suite for calendar database pipeline with MySQL"""
+    """Test suite for calendar database pipeline with SQLite"""
     
     @pytest.fixture
-    def mysql_connection(self):
-        """Create MySQL connection for testing"""
-        config = {
-            'host': 'localhost',
-            'port': 3306,
-            'user': 'root',
-            'password': 'testpassword',
-            'autocommit': True
-        }
+    def sqlite_connection(self):
+        """Create SQLite connection for testing"""
+        db_file = "test_calendar_pytest.db"
         
-        # Try to connect with retries
-        max_retries = 10
-        for attempt in range(max_retries):
-            try:
-                conn = mysql.connector.connect(**config)
-                yield conn
-                conn.close()
-                return
-            except mysql.connector.Error as e:
-                if attempt < max_retries - 1:
-                    time.sleep(2)
-                else:
-                    pytest.skip(f"Could not connect to MySQL: {e}")
+        # Remove existing database file if it exists
+        import os
+        if os.path.exists(db_file):
+            os.remove(db_file)
+        
+        try:
+            conn = sqlite3.connect(db_file)
+            conn.execute("PRAGMA foreign_keys = OFF")  # Disable foreign key constraints temporarily
+            yield conn
+            conn.close()
+            
+            # Clean up
+            if os.path.exists(db_file):
+                os.remove(db_file)
+        except sqlite3.Error as e:
+            pytest.skip(f"Could not connect to SQLite: {e}")
     
     @pytest.fixture
-    def test_database(self, mysql_connection):
+    def test_database(self, sqlite_connection):
         """Create and setup test database"""
-        cursor = mysql_connection.cursor()
+        cursor = sqlite_connection.cursor()
         try:
-            cursor.execute("DROP DATABASE IF EXISTS calendar_test_pytest")
-            cursor.execute("CREATE DATABASE calendar_test_pytest")
-            cursor.execute("USE calendar_test_pytest")
-            yield "calendar_test_pytest"
+            # SQLite doesn't need explicit database creation
+            yield "test_calendar_pytest"
         finally:
             cursor.close()
     
     @pytest.fixture
     def schema_sql(self):
-        """Load MySQL database schema from file"""
-        schema_path = Path(__file__).parent.parent.parent / "seed_data" / "db_schema_mysql.sql"
+        """Load SQLite database schema from file"""
+        schema_path = Path(__file__).parent.parent.parent / "seed_data" / "db_schema.sql"
         with open(schema_path, 'r') as f:
             return f.read()
     
@@ -78,10 +73,10 @@ class TestCalendarPipeline:
                 cursor.execute(statement)
         
         # Replace variables and execute test data
-        sql_content = test_data_sql.replace("SET @TODAY = '2024-01-15';", f"SET @TODAY = '{test_params[0]}';")
-        sql_content = sql_content.replace("SET @session_id = 'session_123';", f"SET @session_id = '{test_params[1]}';")
+        sql_content = test_data_sql.replace('@TODAY', f"'{test_params[0]}'")
+        sql_content = sql_content.replace('@session_id', f"'{test_params[1]}'")
         
-        # Split SQL content into individual statements (handle semicolons inside strings)
+        # Split SQL content into individual statements using a more robust approach
         statements = []
         current_statement = ""
         in_string = False
@@ -108,19 +103,35 @@ class TestCalendarPipeline:
         if current_statement.strip():
             statements.append(current_statement.strip())
         
+        # Filter out comment-only statements but keep statements that have both comments and SQL
+        filtered_statements = []
+        for stmt in statements:
+            # Remove leading comments but keep the SQL part
+            lines = stmt.split('\n')
+            sql_lines = []
+            for line in lines:
+                stripped = line.strip()
+                if stripped and not stripped.startswith('--'):
+                    sql_lines.append(line)
+            if sql_lines:
+                filtered_statements.append('\n'.join(sql_lines))
+        
+        statements = filtered_statements
+        
         # Execute each statement
-        for statement in statements:
-            if statement:
+        for i, statement in enumerate(statements):
+            if statement and not statement.startswith('--'):
                 cursor.execute(statement)
         
+        conn.commit()
         cursor.close()
     
-    def test_basic_data_integrity(self, mysql_connection, test_database, schema_sql, test_data_sql, test_params):
+    def test_basic_data_integrity(self, sqlite_connection, test_database, schema_sql, test_data_sql, test_params):
         """Test basic data integrity - all tables have expected records"""
-        self.setup_database(mysql_connection, schema_sql, test_data_sql, test_params)
+        self.setup_database(sqlite_connection, schema_sql, test_data_sql, test_params)
         
         # Test record counts
-        cursor = mysql_connection.cursor()
+        cursor = sqlite_connection.cursor()
         
         cursor.execute("SELECT COUNT(*) FROM users")
         user_count = cursor.fetchone()[0]
@@ -141,11 +152,11 @@ class TestCalendarPipeline:
         print(f"✅ Data integrity check passed: {user_count} users, {calendar_count} calendars, {event_count} events, {attendee_count} attendees")
         cursor.close()
     
-    def test_foreign_key_constraints(self, mysql_connection, test_database, schema_sql, test_data_sql, test_params):
+    def test_foreign_key_constraints(self, sqlite_connection, test_database, schema_sql, test_data_sql, test_params):
         """Test that all foreign key constraints are satisfied"""
-        self.setup_database(mysql_connection, schema_sql, test_data_sql, test_params)
+        self.setup_database(sqlite_connection, schema_sql, test_data_sql, test_params)
         
-        cursor = mysql_connection.cursor()
+        cursor = sqlite_connection.cursor()
         
         # Test events have valid user_id references
         cursor.execute("""
@@ -182,11 +193,11 @@ class TestCalendarPipeline:
         print("✅ All foreign key constraints satisfied")
         cursor.close()
     
-    def test_user_event_relationship(self, mysql_connection, test_database, schema_sql, test_data_sql, test_params):
+    def test_user_event_relationship(self, sqlite_connection, test_database, schema_sql, test_data_sql, test_params):
         """Test that users have events and attendees are properly linked"""
-        self.setup_database(mysql_connection, schema_sql, test_data_sql, test_params)
+        self.setup_database(sqlite_connection, schema_sql, test_data_sql, test_params)
         
-        cursor = mysql_connection.cursor()
+        cursor = sqlite_connection.cursor()
         
         # Get a sample user
         cursor.execute("SELECT id, name FROM users LIMIT 1")
@@ -196,7 +207,7 @@ class TestCalendarPipeline:
         user_id, user_name = user
         
         # Check user has events
-        cursor.execute("SELECT COUNT(*) FROM events WHERE user_id = %s", (user_id,))
+        cursor.execute("SELECT COUNT(*) FROM events WHERE user_id = ?", (user_id,))
         user_event_count = cursor.fetchone()[0]
         assert user_event_count > 0, f"User {user_name} should have events"
         
@@ -204,7 +215,7 @@ class TestCalendarPipeline:
         cursor.execute("""
             SELECT COUNT(*) FROM attendees a
             JOIN events e ON a.event_id = e.id
-            WHERE e.user_id = %s
+            WHERE e.user_id = ?
         """, (user_id,))
         user_attendee_count = cursor.fetchone()[0]
         assert user_attendee_count > 0, f"User {user_name} should have attendees for their events"
@@ -212,11 +223,11 @@ class TestCalendarPipeline:
         print(f"✅ User {user_name} has {user_event_count} events and {user_attendee_count} attendees")
         cursor.close()
     
-    def test_personal_vs_work_events(self, mysql_connection, test_database, schema_sql, test_data_sql, test_params):
+    def test_personal_vs_work_events(self, sqlite_connection, test_database, schema_sql, test_data_sql, test_params):
         """Test that personal and work events are properly categorized"""
-        self.setup_database(mysql_connection, schema_sql, test_data_sql, test_params)
+        self.setup_database(sqlite_connection, schema_sql, test_data_sql, test_params)
         
-        cursor = mysql_connection.cursor()
+        cursor = sqlite_connection.cursor()
         
         # Check personal events exist
         cursor.execute("SELECT COUNT(*) FROM events WHERE calendar_id LIKE '%personal%'")
@@ -241,11 +252,11 @@ class TestCalendarPipeline:
         print(f"✅ Event categorization: {personal_count} personal events, {work_count} work events")
         cursor.close()
     
-    def test_recurring_events(self, mysql_connection, test_database, schema_sql, test_data_sql, test_params):
+    def test_recurring_events(self, sqlite_connection, test_database, schema_sql, test_data_sql, test_params):
         """Test that recurring events are properly handled"""
-        self.setup_database(mysql_connection, schema_sql, test_data_sql, test_params)
+        self.setup_database(sqlite_connection, schema_sql, test_data_sql, test_params)
         
-        cursor = mysql_connection.cursor()
+        cursor = sqlite_connection.cursor()
         
         # Check for recurring events (rrule not null/empty)
         cursor.execute("SELECT COUNT(*) FROM events WHERE rrule IS NOT NULL AND rrule != ''")
@@ -273,11 +284,11 @@ class TestCalendarPipeline:
             print("ℹ️ No recurring events found in test data")
         cursor.close()
     
-    def test_attendee_response_times(self, mysql_connection, test_database, schema_sql, test_data_sql, test_params):
+    def test_attendee_response_times(self, sqlite_connection, test_database, schema_sql, test_data_sql, test_params):
         """Test that attendee response times are realistic"""
-        self.setup_database(mysql_connection, schema_sql, test_data_sql, test_params)
+        self.setup_database(sqlite_connection, schema_sql, test_data_sql, test_params)
         
-        cursor = mysql_connection.cursor()
+        cursor = sqlite_connection.cursor()
         
         # Check attendees have realistic response times
         cursor.execute("""
@@ -305,16 +316,16 @@ class TestCalendarPipeline:
         
         assert 'accepted' in status_counts, "Should have accepted responses"
         assert 'declined' in status_counts, "Should have declined responses"
-        assert 'no_response' in status_counts, "Should have no_response attendees"
+        assert 'pending' in status_counts, "Should have pending attendees"
         
         print(f"✅ Attendee responses: {status_counts}")
         cursor.close()
     
-    def test_session_id_consistency(self, mysql_connection, test_database, schema_sql, test_data_sql, test_params):
+    def test_session_id_consistency(self, sqlite_connection, test_database, schema_sql, test_data_sql, test_params):
         """Test that session_id is consistent across all records"""
-        self.setup_database(mysql_connection, schema_sql, test_data_sql, test_params)
+        self.setup_database(sqlite_connection, schema_sql, test_data_sql, test_params)
         
-        cursor = mysql_connection.cursor()
+        cursor = sqlite_connection.cursor()
         
         # Check all events have the same session_id
         cursor.execute("SELECT DISTINCT session_id FROM events")
@@ -334,11 +345,11 @@ class TestCalendarPipeline:
         print(f"✅ Session ID consistency: {expected_session}")
         cursor.close()
     
-    def test_dynamic_date_calculations(self, mysql_connection, test_database, schema_sql, test_data_sql, test_params):
+    def test_dynamic_date_calculations(self, sqlite_connection, test_database, schema_sql, test_data_sql, test_params):
         """Test that dynamic date calculations work correctly"""
-        self.setup_database(mysql_connection, schema_sql, test_data_sql, test_params)
+        self.setup_database(sqlite_connection, schema_sql, test_data_sql, test_params)
         
-        cursor = mysql_connection.cursor()
+        cursor = sqlite_connection.cursor()
         
         # Get a sample event with start_time
         cursor.execute("""
@@ -367,18 +378,18 @@ class TestCalendarPipeline:
         print(f"✅ Dynamic date calculation working: '{title}' from {start_time} to {end_time}")
         cursor.close()
     
-    def test_business_logic_validation(self, mysql_connection, test_database, schema_sql, test_data_sql, test_params):
+    def test_business_logic_validation(self, sqlite_connection, test_database, schema_sql, test_data_sql, test_params):
         """Test business logic - events should make sense"""
-        self.setup_database(mysql_connection, schema_sql, test_data_sql, test_params)
+        self.setup_database(sqlite_connection, schema_sql, test_data_sql, test_params)
         
-        cursor = mysql_connection.cursor()
+        cursor = sqlite_connection.cursor()
         
         # Test that work events are during business hours
         cursor.execute("""
             SELECT COUNT(*) FROM events 
             WHERE calendar_id LIKE '%work%' 
             AND start_time IS NOT NULL
-            AND HOUR(start_time) NOT BETWEEN 8 AND 18
+            AND CAST(strftime('%H', start_time) AS INTEGER) NOT BETWEEN 8 AND 18
         """)
         non_business_hours = cursor.fetchone()[0]
         
@@ -396,7 +407,7 @@ class TestCalendarPipeline:
             WHERE calendar_id LIKE '%personal%' 
             AND start_time IS NOT NULL 
             AND end_time IS NOT NULL
-            AND TIMESTAMPDIFF(HOUR, start_time, end_time) > 24
+            AND (julianday(end_time) - julianday(start_time)) * 24 > 24
             AND title NOT LIKE '%vacation%'
             AND title NOT LIKE '%trip%'
             AND title NOT LIKE '%getaway%'
@@ -423,11 +434,39 @@ class TestCalendarPipeline:
         print("✅ Business logic validation passed")
         cursor.close()
     
-    def test_data_quality_metrics(self, mysql_connection, test_database, schema_sql, test_data_sql, test_params):
-        """Test overall data quality metrics"""
-        self.setup_database(mysql_connection, schema_sql, test_data_sql, test_params)
+    def test_record_counts(self, sqlite_connection, test_database, schema_sql, test_data_sql, test_params):
+        """Test that we have reasonable record counts"""
+        self.setup_database(sqlite_connection, schema_sql, test_data_sql, test_params)
         
-        cursor = mysql_connection.cursor()
+        cursor = sqlite_connection.cursor()
+        
+        # Get record counts
+        cursor.execute("SELECT COUNT(*) FROM users")
+        user_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM calendars")
+        calendar_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM events")
+        event_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM attendees")
+        attendee_count = cursor.fetchone()[0]
+        
+        # Validate minimum counts
+        assert user_count >= 50, f"Expected at least 50 users, got {user_count}"
+        assert calendar_count >= 100, f"Expected at least 100 calendars, got {calendar_count}"
+        assert event_count >= 1000, f"Expected at least 1000 events, got {event_count}"
+        assert attendee_count >= 1000, f"Expected at least 1000 attendees, got {attendee_count}"
+        
+        print(f"✅ Record counts validated: {user_count} users, {calendar_count} calendars, {event_count} events, {attendee_count} attendees")
+        cursor.close()
+    
+    def test_data_quality_metrics(self, sqlite_connection, test_database, schema_sql, test_data_sql, test_params):
+        """Test overall data quality metrics"""
+        self.setup_database(sqlite_connection, schema_sql, test_data_sql, test_params)
+        
+        cursor = sqlite_connection.cursor()
         
         # Calculate various metrics
         cursor.execute("SELECT COUNT(*) FROM users")

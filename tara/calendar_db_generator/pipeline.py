@@ -316,6 +316,15 @@ class CalendarDatabasePipeline(Pipeline):
         
         self.logger.info(f"SQL file generated: {output_file}")
     
+    def execute_sql_file(self, sql_file: str = "calendar_data_final.sql", db_file: str = "calendar.db", today: str = None, session_id: str = None):
+        """Execute SQL file with variable replacement on SQLite database"""
+        self.logger.info(f"Executing SQL file on SQLite database: {db_file}")
+        
+        generator = SQLGenerator()
+        generator.execute_sql_file(sql_file, db_file, today, session_id)
+        
+        self.logger.info(f"SQL file executed successfully on {db_file}")
+    
     def process(self, skip_steps: List[str] = None, force_steps: List[str] = None):
         """Main pipeline process with checkpoint support"""
         self.logger.info("Starting Calendar Database Pipeline")
@@ -378,6 +387,12 @@ class CalendarDatabasePipeline(Pipeline):
         else:
             self.logger.info("Skipping SQL file generation")
         
+        # Step 7: Execute SQL file (optional)
+        if 'execute_sql' not in (skip_steps or []):
+            self.execute_sql_file()
+        else:
+            self.logger.info("Skipping SQL execution")
+        
         self.logger.info("Pipeline completed successfully!")
         self.logger.info("Generated data:")
         if self.users_df is not None:
@@ -394,8 +409,8 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='Calendar Database Pipeline')
     parser.add_argument('--model', default='openai/o4-mini', help='AI model to use')
-    parser.add_argument('--skip', nargs='*', help='Steps to skip (profiles, dataframes, events, attendees, sql)')
-    parser.add_argument('--force', nargs='*', help='Steps to force re-run (profiles, dataframes, events, attendees, sql)')
+    parser.add_argument('--skip', nargs='*', help='Steps to skip (profiles, dataframes, events, attendees, sql, execute_sql)')
+    parser.add_argument('--force', nargs='*', help='Steps to force re-run (profiles, dataframes, events, attendees, sql, execute_sql)')
     parser.add_argument('--checkpoint-dir', default='output/checkpoints', help='Checkpoint directory')
     
     args = parser.parse_args()

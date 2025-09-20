@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
 Dynamic SQL Generator with TODAY and session_id variables
-Generates SQL file with schema and inserts for calendar database
+Generates SQL file with schema and inserts for calendar database (SQLite)
 """
 
 import pandas as pd
 from datetime import datetime
 from typing import List
 import os
+import sqlite3
+import re
 
 class SQLGenerator:
     def __init__(self, today_override=None):
@@ -24,7 +26,7 @@ class SQLGenerator:
         }
         
         # Schema file
-        self.schema_file = 'seed_data/db_schema.sql'
+        self.schema_file = 'seed_data/db_schema.sql'  # Use SQLite schema
         
         print(f"🗓️  TODAY: {self.today} ({self.today.strftime('%A')})")
         print(f"📅 SQL will adjust TODAY to match original event weekdays")
@@ -80,14 +82,15 @@ class SQLGenerator:
                     for col in columns_to_use:
                         if col == 'start_time':
                             time_part = start_time.strftime('%H:%M:%S')
-                            # Use MySQL DATE_ADD function for dynamic date calculation
-                            values.append(f"DATE_ADD(@TODAY, INTERVAL (({original_start_weekday} - WEEKDAY(@TODAY) + 7) % 7) DAY) + INTERVAL '{time_part}' HOUR_SECOND")
+                            # Use SQLite datetime function for dynamic date calculation
+                            # Calculate days to add: (original_weekday - current_weekday + 7) % 7
+                            values.append(f"datetime(@TODAY, '+{((original_start_weekday - self.today.weekday() + 7) % 7)} days', '{time_part}')")
                         elif col == 'end_time':
                             time_part = end_time.strftime('%H:%M:%S')
-                            # Use MySQL DATE_ADD function for dynamic date calculation
-                            values.append(f"DATE_ADD(@TODAY, INTERVAL (({original_end_weekday} - WEEKDAY(@TODAY) + 7) % 7) DAY) + INTERVAL '{time_part}' HOUR_SECOND")
+                            # Use SQLite datetime function for dynamic date calculation
+                            values.append(f"datetime(@TODAY, '+{((original_end_weekday - self.today.weekday() + 7) % 7)} days', '{time_part}')")
                         elif col == 'session_id':
-                            # Use MySQL variable for session_id
+                            # Use placeholder for session_id (will be replaced later)
                             values.append('@session_id')
                         else:
                             value = row[col]
@@ -116,7 +119,7 @@ class SQLGenerator:
                     values = []
                     for col in columns_to_use:
                         if col == 'session_id':
-                            # Use MySQL variable for session_id
+                            # Use placeholder for session_id (will be replaced later)
                             values.append('@session_id')
                         else:
                             value = row[col]
@@ -138,22 +141,30 @@ class SQLGenerator:
             print(f"❌ Error processing {csv_file}: {e}")
             return []
     
+    def replace_variables(self, sql_content: str, today: str, session_id: str) -> str:
+        """Replace @TODAY and @session_id variables with actual values"""
+        # Replace @TODAY with actual date
+        sql_content = sql_content.replace('@TODAY', f"'{today}'")
+        # Replace @session_id with actual session ID
+        sql_content = sql_content.replace('@session_id', f"'{session_id}'")
+        return sql_content
+
     def generate_sql(self, output_file: str = "calendar_data_final.sql"):
         """Generate SQL file with schema and INSERT statements using @TODAY and @session_id variables"""
         print(f"\n🔄 Generating SQL file...")
         
         with open(output_file, 'w') as f:
-            # Write header with MySQL variables at the very top
-            f.write(f"""-- Calendar Database SQL File (MySQL)
+            # Write header with SQLite variables at the very top
+            f.write(f"""-- Calendar Database SQL File (SQLite)
 -- Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 -- 
--- Variables to be set before running:
-SET @TODAY = '2024-01-15';
-SET @session_id = 'session_123';
+-- Variables to be replaced before running:
+-- @TODAY = '2024-01-15'
+-- @session_id = 'session_123'
 --
 -- Example usage:
--- SET @TODAY = '2024-01-15';
--- SET @session_id = 'session_123';
+-- Replace @TODAY with actual date: '2024-01-15'
+-- Replace @session_id with actual session ID: 'session_123'
 -- [rest of SQL statements]
 --
 -- This file contains INSERT statements only:
@@ -237,7 +248,7 @@ SELECT
     em.event_id,
     {user_id},
     '{status}',
-    {responded_at if responded_at != 'NULL' and (responded_at.startswith('DATE(') or responded_at.startswith('DATE_ADD(')) else f"'{responded_at}'" if responded_at != 'NULL' else 'NULL'},
+    {responded_at if responded_at != 'NULL' and responded_at.startswith('datetime(') else f"'{responded_at}'" if responded_at != 'NULL' else 'NULL'},
     @session_id
 FROM event_mapping em
 WHERE em.user_id = {event_user_id}
@@ -251,6 +262,71 @@ LIMIT 1;"""
         except Exception as e:
             print(f"❌ Error processing attendees: {e}")
             return []
+
+    def execute_sql_file(self, sql_file: str, db_file: str, today: str = None, session_id: str = None):
+        """Execute SQL file with variable replacement on SQLite database"""
+        if today is None:
+            today = self.today_str
+        if session_id is None:
+            session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        print(f"🔄 Executing SQL file with TODAY={today}, session_id={session_id}")
+        
+        # Read SQL file
+        with open(sql_file, 'r') as f:
+            sql_content = f.read()
+        
+        # Replace variables
+        sql_content = self.replace_variables(sql_content, today, session_id)
+        
+        # Connect to SQLite database
+        conn = sqlite3.connect(db_file)
+        cursor = conn.cursor()
+        
+        try:
+            # Split SQL content into individual statements
+            statements = []
+            current_statement = ""
+            in_string = False
+            escape_next = False
+            
+            for char in sql_content:
+                if escape_next:
+                    current_statement += char
+                    escape_next = False
+                elif char == '\\' and in_string:
+                    current_statement += char
+                    escape_next = True
+                elif char == "'" and not escape_next:
+                    in_string = not in_string
+                    current_statement += char
+                elif char == ';' and not in_string:
+                    if current_statement.strip():
+                        statements.append(current_statement.strip())
+                    current_statement = ""
+                else:
+                    current_statement += char
+            
+            # Add the last statement if it exists
+            if current_statement.strip():
+                statements.append(current_statement.strip())
+            
+            # Execute each statement
+            for i, statement in enumerate(statements):
+                if statement and not statement.startswith('--'):
+                    try:
+                        cursor.execute(statement)
+                    except sqlite3.Error as e:
+                        print(f"❌ Error executing statement {i+1}: {e}")
+                        print(f"Statement: {statement[:100]}...")
+                        raise
+            
+            conn.commit()
+            print(f"✅ SQL file executed successfully on {db_file}")
+            
+        finally:
+            cursor.close()
+            conn.close()
 
 def main():
     generator = SQLGenerator()

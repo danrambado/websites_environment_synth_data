@@ -12,12 +12,11 @@ class AttendeesGenerator(Action):
     def __init__(self, model=None):
         super().__init__(model)
         
-        # RSVP status probabilities
+        # RSVP status probabilities (only use statuses allowed by SQLite schema)
         self.rsvp_probabilities = {
             'accepted': 0.75,    # 75% accept
-            'declined': 0.10,    # 10% decline
-            'tentative': 0.10,   # 10% tentative
-            'no_response': 0.05  # 5% no response
+            'declined': 0.15,    # 15% decline
+            'pending': 0.10      # 10% pending (instead of tentative/no_response)
         }
         
         # Meeting roles
@@ -199,14 +198,14 @@ class AttendeesGenerator(Action):
         if role == 'required_attendee':
             return random.choices(
                 list(self.rsvp_probabilities.keys()),
-                weights=[0.85, 0.05, 0.08, 0.02]  # Higher acceptance for required
+                weights=[0.85, 0.05, 0.10]  # Higher acceptance for required (accepted, declined, pending)
             )[0]
         
         # Optional attendees have lower acceptance rate
         elif role == 'optional_attendee':
             return random.choices(
                 list(self.rsvp_probabilities.keys()),
-                weights=[0.60, 0.20, 0.15, 0.05]  # Lower acceptance for optional
+                weights=[0.60, 0.20, 0.20]  # Lower acceptance for optional (accepted, declined, pending)
             )[0]
         
         # Default probabilities
@@ -217,7 +216,7 @@ class AttendeesGenerator(Action):
 
     def _generate_response_timestamp(self, event: Dict[str, Any], rsvp_status: str) -> Optional[str]:
         """Generate realistic response timestamp based on RSVP status - returns dynamic SQL expression"""
-        if rsvp_status == 'no_response':
+        if rsvp_status == 'pending':
             return None
         
         # Response times vary based on status (days before event)
@@ -227,13 +226,13 @@ class AttendeesGenerator(Action):
         elif rsvp_status == 'declined':
             # Declined responses come quickly too
             response_days_before = random.randint(1, 5)
-        else:  # tentative
-            # Tentative responses take longer
+        else:  # pending
+            # Pending responses take longer
             response_days_before = random.randint(3, 14)
         
         # Return dynamic SQL expression that calculates response time relative to @TODAY
-        # Format: DATE_ADD(@TODAY, INTERVAL days_offset DAY) + INTERVAL '10:00:00' HOUR_SECOND
-        response_time = f"DATE_ADD(@TODAY, INTERVAL {response_days_before} DAY) + INTERVAL '10:00:00' HOUR_SECOND"
+        # Format: datetime(@TODAY, '+X days', '10:00:00')
+        response_time = f"datetime(@TODAY, '+{response_days_before} days', '10:00:00')"
         return response_time
 
     def _generate_rsvp_note(self, rsvp_status: str) -> Optional[str]:
@@ -252,10 +251,10 @@ class AttendeesGenerator(Action):
                 "Out of office",
                 None
             ])
-        elif rsvp_status == 'tentative':
+        elif rsvp_status == 'pending':
             return random.choice([
-                "Maybe, will confirm later",
-                "Tentative - depends on other meetings",
+                "Will confirm later",
+                "Need to check schedule",
                 "Will try to make it",
                 None
             ])
