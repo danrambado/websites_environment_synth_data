@@ -20,6 +20,8 @@ class CalendarDatabasePipeline(Pipeline):
         self.profiles = None
         self.users_df = None
         self.calendars_df = None
+        self.work_events = None
+        self.personal_events = None
         self.events_df = None
         self.attendees_df = None
         self.checkpoint_dir = checkpoint_dir
@@ -186,16 +188,13 @@ class CalendarDatabasePipeline(Pipeline):
 
 
     
-    def generate_events(self, profiles: List[Dict[str, Any]], calendars_df: pd.DataFrame, skip_if_exists: bool = True) -> pd.DataFrame:
-        """Generate work and personal events for all users - SQLite will auto-generate IDs"""
-        if skip_if_exists and self._checkpoint_exists('events_df'):
-            self.logger.info("Loading events DataFrame from checkpoint...")
-            df = self._load_checkpoint('events_df')
-            df.to_csv("output/events.csv", index=False)
-            self.logger.info(f"Saved events.csv with {len(df)} records")
-            return df
+    def generate_work_events(self, profiles: List[Dict[str, Any]], calendars_df: pd.DataFrame, skip_if_exists: bool = True) -> List[Dict[str, Any]]:
+        """Generate work events for all users using templates - SQLite will auto-generate IDs"""
+        if skip_if_exists and self._checkpoint_exists('work_events'):
+            self.logger.info("Loading work events from checkpoint...")
+            return self._load_checkpoint('work_events')
         
-        self.logger.info("Generating events...")
+        self.logger.info("Generating work events...")
         calendars = calendars_df.to_dict('records')
         
         # Generate work events for each user
@@ -219,6 +218,22 @@ class CalendarDatabasePipeline(Pipeline):
         for _, row in self.df.iterrows():
             if row['work_events'] is not None:
                 work_events.extend(row['work_events'])
+        
+        self.logger.info(f"Generated {len(work_events)} work events")
+        
+        # Save checkpoint
+        self._save_checkpoint('work_events', work_events)
+        
+        return work_events
+    
+    def generate_personal_events(self, profiles: List[Dict[str, Any]], calendars_df: pd.DataFrame, work_events: List[Dict[str, Any]], skip_if_exists: bool = True) -> List[Dict[str, Any]]:
+        """Generate personal events for all users using AI - SQLite will auto-generate IDs"""
+        if skip_if_exists and self._checkpoint_exists('personal_events'):
+            self.logger.info("Loading personal events from checkpoint...")
+            return self._load_checkpoint('personal_events')
+        
+        self.logger.info("Generating personal events...")
+        calendars = calendars_df.to_dict('records')
         
         # Generate personal events for each user
         personal_data = []
@@ -245,16 +260,13 @@ class CalendarDatabasePipeline(Pipeline):
             if row['personal_events'] is not None:
                 personal_events.extend(row['personal_events'])
         
-        # Combine all events
-        all_events = work_events + personal_events
-        self.logger.info(f"Generated {len(work_events)} work events and {len(personal_events)} personal events")
+        self.logger.info(f"Generated {len(personal_events)} personal events")
         
-        df = pd.DataFrame(all_events)
-        df.to_csv("output/events.csv", index=False)
-        self.logger.info(f"Saved events.csv with {len(df)} records")
+        # Save checkpoint
+        self._save_checkpoint('personal_events', personal_events)
         
-        self._save_checkpoint('events_df', df)
-        return df
+        return personal_events
+    
     
     def generate_attendees(self, events_df: pd.DataFrame, profiles: List[Dict[str, Any]], skip_if_exists: bool = True) -> pd.DataFrame:
         """Generate attendees - one attendee record per unique event title per user"""
@@ -363,16 +375,33 @@ class CalendarDatabasePipeline(Pipeline):
             self.users_df = self._load_checkpoint('users_df')
             self.calendars_df = self._load_checkpoint('calendars_df')
         
-        # Step 4: Generate events
-        if 'events' not in (skip_steps or []):
-            skip_events = 'events' not in (force_steps or [])
-            self.events_df = self.generate_events(self.profiles, self.calendars_df, skip_if_exists=skip_events)
+        # Step 4: Generate work events
+        if 'work_events' not in (skip_steps or []):
+            skip_work_events = 'work_events' not in (force_steps or [])
+            self.work_events = self.generate_work_events(self.profiles, self.calendars_df, skip_if_exists=skip_work_events)
         else:
-            self.logger.info("Skipping event generation")
-            # Load events from checkpoint when skipping
-            self.events_df = self._load_checkpoint('events_df')
+            self.logger.info("Skipping work event generation")
+            # Load work events from checkpoint when skipping
+            self.work_events = self._load_checkpoint('work_events') or []
         
-        # Step 5: Generate attendees
+        # Step 5: Generate personal events
+        if 'personal_events' not in (skip_steps or []):
+            skip_personal_events = 'personal_events' not in (force_steps or [])
+            self.personal_events = self.generate_personal_events(self.profiles, self.calendars_df, self.work_events, skip_if_exists=skip_personal_events)
+        else:
+            self.logger.info("Skipping personal event generation")
+            # Load personal events from checkpoint when skipping
+            self.personal_events = self._load_checkpoint('personal_events') or []
+        
+        # Step 6: Combine events automatically
+        self.logger.info("Combining work and personal events...")
+        all_events = (self.work_events or []) + (self.personal_events or [])
+        self.events_df = pd.DataFrame(all_events)
+        self.events_df.to_csv("output/events.csv", index=False)
+        self.logger.info(f"Combined {len(self.work_events or [])} work events and {len(self.personal_events or [])} personal events")
+        self.logger.info(f"Saved events.csv with {len(self.events_df)} records")
+        
+        # Step 7: Generate attendees
         if 'attendees' not in (skip_steps or []):
             skip_attendees = 'attendees' not in (force_steps or [])
             self.attendees_df = self.generate_attendees(self.events_df, self.profiles, skip_if_exists=skip_attendees)
@@ -381,13 +410,13 @@ class CalendarDatabasePipeline(Pipeline):
             # Load attendees from checkpoint when skipping
             self.attendees_df = self._load_checkpoint('attendees_df')
         
-        # Step 6: Generate SQL file
+        # Step 8: Generate SQL file
         if 'sql' not in (skip_steps or []):
             self.generate_sql_file()
         else:
             self.logger.info("Skipping SQL file generation")
         
-        # Step 7: Execute SQL file (optional)
+        # Step 9: Execute SQL file (optional)
         if 'execute_sql' not in (skip_steps or []):
             self.execute_sql_file()
         else:
@@ -409,8 +438,8 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='Calendar Database Pipeline')
     parser.add_argument('--model', default='openai/o4-mini', help='AI model to use')
-    parser.add_argument('--skip', nargs='*', help='Steps to skip (profiles, dataframes, events, attendees, sql, execute_sql)')
-    parser.add_argument('--force', nargs='*', help='Steps to force re-run (profiles, dataframes, events, attendees, sql, execute_sql)')
+    parser.add_argument('--skip', nargs='*', help='Steps to skip (profiles, dataframes, work_events, personal_events, attendees, sql, execute_sql)')
+    parser.add_argument('--force', nargs='*', help='Steps to force re-run (profiles, dataframes, work_events, personal_events, attendees, sql, execute_sql)')
     parser.add_argument('--checkpoint-dir', default='output/checkpoints', help='Checkpoint directory')
     
     args = parser.parse_args()

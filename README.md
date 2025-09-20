@@ -20,15 +20,35 @@ Generates realistic calendar data (users, events, attendees) for testing and dev
    - `END_POINT`: LiteLLM endpoint URL
    - `OPENAI_API_KEY`: Your OpenAI API key
 
-## Quick Start
+## Pipeline Execution
+
+The pipeline has 7 steps with checkpoint support:
 
 ```bash
-# Generate data
+# Full pipeline (requires LLM calls)
 uv run python tara/calendar_db_generator/pipeline.py
 
-# Run tests
-uv run pytest tara/tests/test_calendar_pipeline.py -v
+# Skip expensive LLM steps (use cached data)
+uv run python tara/calendar_db_generator/pipeline.py --skip profiles personal_events
+
+# Generate only work events (no LLM needed)
+uv run python tara/calendar_db_generator/pipeline.py --skip profiles personal_events attendees
+
+# Force re-run specific steps
+uv run python tara/calendar_db_generator/pipeline.py --force profiles
 ```
+
+**Pipeline Steps:**
+1. **`profiles`** - Generate realistic user profiles with personal/professional details using AI *(requires LLM)*
+2. **`dataframes`** - Create users and calendars DataFrames from profiles *(local processing)*
+3. **`work_events`** - Generate work meetings using predefined templates *(local processing)*
+4. **`personal_events`** - Generate personal events using AI based on user profiles *(requires LLM)*
+5. **`attendees`** - Generate attendee records with realistic RSVP responses using algorithmic rules *(local processing)*
+6. **`sql`** - Generate SQLite-compatible SQL file with INSERT statements *(local processing)*
+7. **`execute_sql`** - Execute SQL file on SQLite database with variable replacement *(local processing)*
+
+**LLM-Required Steps:** `profiles`, `personal_events`  
+**Local Processing Steps:** `dataframes`, `work_events`, `attendees`, `sql`, `execute_sql`
 
 ## What It Does
 
