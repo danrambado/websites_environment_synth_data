@@ -1,0 +1,6 @@
+.env
+/output
+/tara/tests/test_reports
+.DS_Store
+__pycache__/
+calendar_data_final.sql

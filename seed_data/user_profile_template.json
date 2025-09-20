@@ -1,0 +1,101 @@
+{
+    "profile_template": {
+      "personal": {
+        "name": "string", 
+        "email": "string", 
+        "age": "number", 
+        "pronouns": "string", 
+        "birthday": "string", 
+        "phone": "string", 
+        "location": {
+          "city": "string", 
+          "state": "string", 
+          "timezone": "string",
+          "country": "string" 
+        },
+        "languages": ["string"], 
+        "personality_traits": ["string"] 
+      },
+      "professional": {
+        "role": "string", 
+        "level": "string", 
+        "department": "string", 
+        "team": "string", 
+        "start_date": "string", 
+        "salary_range": "string", 
+        "skills": ["string"], 
+        "certifications": ["string"], 
+        "work_preferences": {
+          "remote_days": ["string"], 
+          "preferred_meeting_times": ["string"], 
+          "focus_time_blocks": ["string"],
+          "communication_style": "string", 
+          "timezone_preference": "string" 
+        },
+        "career_goals": ["string"], 
+        "workload": "string",
+        "professional_hierarchy": {
+          "manager_id": "string", 
+          "direct_reports": ["string"], 
+          "peers": ["string"], 
+          "collaborators": ["string"], 
+          "mentees": ["string"], 
+          "mentors": ["string"] 
+        }
+      },
+      "personal_life": {
+        "family": {
+          "marital_status": "string", 
+          "children": ["string"], 
+          "pets": ["string"] 
+        },
+        "hobbies": [
+          {
+            "name": "string",
+            "frequency": "string", 
+            "day_preference": "string", 
+            "time_preference": "string" 
+          }
+        ],
+        "health": {
+          "gym_member": "boolean",
+          "gym_schedule": ["string"], 
+          "doctor_appointments": "string",
+          "medical_appointments": [
+            {
+              "type": "string",
+              "frequency": "string",
+              "preferred_day": "string",
+              "preferred_time": "string"
+            }
+          ],
+          "health_conditions": ["string"],
+          "medications": ["string"],
+          "emergency_contact": {
+            "name": "string",
+            "relationship": "string",
+            "phone": "string"
+          }
+        },
+        "education": {
+          "current_studies": "string", 
+          "learning_schedule": ["string"], 
+          "time_preference": "string",
+          "degree_level": "string",
+          "field_of_study": "string",
+          "learning_style": "string"
+        },
+        "social": {
+          "social_media_usage": "string",
+          "networking_events": "string",
+          "volunteer_work": "string",
+          "community_involvement": ["string"]
+        },
+        "travel": {
+          "travel_frequency": "string", 
+          "travel_preferences": ["string"], 
+          "vacation_time": "string" 
+        }
+      }
+    }
+  }

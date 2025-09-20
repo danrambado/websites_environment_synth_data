@@ -1,0 +1,110 @@
+[
+    {
+        "name": "Backlog Refinement",
+        "type": "weekly",
+        "day": "Wednesday",
+        "time": "11:00",
+        "duration": 60,
+        "attendees": "product_manager, engineering_team",
+        "description": "Reviewing, detailing, and prioritizing upcoming user stories in the backlog."
+    },
+    {
+        "name": "Design Critique Session",
+        "type": "weekly",
+        "day": "Monday",
+        "time": "15:00",
+        "duration": 60,
+        "attendees": "design_team, product_managers",
+        "description": "Peer review of ongoing design work to provide constructive feedback and ensure consistency."
+    },
+    {
+        "name": "Sales Pipeline Review",
+        "type": "weekly",
+        "day": "Monday",
+        "time": "09:00",
+        "duration": 60,
+        "attendees": "vp_sales, account_executives, sdrs",
+        "description": "Reviewing the sales pipeline, progress on key deals, and weekly forecast."
+    },
+    {
+        "name": "Marketing Campaign Sync",
+        "type": "weekly",
+        "day": "Tuesday",
+        "time": "10:00",
+        "duration": 45,
+        "attendees": "marketing_team",
+        "description": "Sync-up on current marketing campaign performance and plan upcoming activities."
+    },
+    {
+        "name": "Architecture Review Board (ARB)",
+        "type": "biweekly",
+        "day": "Tuesday",
+        "time": "14:00",
+        "duration": 90,
+        "attendees": "cto, principal_engineers, engineering_managers",
+        "description": "Discuss and approve major technical architecture decisions for new systems or features."
+    },
+    {
+        "name": "Bug Triage",
+        "type": "weekly",
+        "day": "Thursday",
+        "time": "11:00",
+        "duration": 30,
+        "attendees": "qa_engineer, product_manager, engineering_lead",
+        "description": "Review, prioritize, and assign new bugs reported in the last week."
+    },
+    {
+        "name": "Executive Leadership Meeting",
+        "type": "weekly",
+        "day": "Monday",
+        "time": "11:00",
+        "duration": 90,
+        "attendees": "executive_team",
+        "description": "Strategic sync for the executive leadership team to discuss company-wide priorities."
+    },
+    {
+        "name": "Product Roadmap Planning",
+        "type": "quarterly",
+        "day": "First Monday of Quarter",
+        "time": "13:00",
+        "duration": 180,
+        "attendees": "cpo, product_managers, cto, engineering_managers, vp_sales, vp_marketing",
+        "description": "Strategic session to define the product roadmap for the upcoming quarter."
+    },
+    {
+        "name": "Quarterly Business Review (QBR)",
+        "type": "quarterly",
+        "day": "Third Wednesday of Quarter End",
+        "time": "10:00",
+        "duration": 240,
+        "attendees": "executive_team, department_heads",
+        "description": "Review of the past quarter's performance against goals and setting priorities for the next."
+    },
+    {
+        "name": "Lunch & Learn",
+        "type": "monthly",
+        "day": "Last Wednesday",
+        "time": "12:30",
+        "duration": 60,
+        "attendees": "all_company",
+        "description": "An informal session where an employee presents on a topic of professional or personal interest."
+    },
+    {
+        "name": "Frontend Guild Meeting",
+        "type": "biweekly",
+        "day": "Wednesday",
+        "time": "16:00",
+        "duration": 60,
+        "attendees": "frontend_developers, ui_designers",
+        "description": "A cross-team meeting to discuss new frontend technologies, best practices, and shared components."
+    },
+    {
+        "name": "Company Social Hour",
+        "type": "monthly",
+        "day": "Third Friday",
+        "time": "17:00",
+        "duration": 90,
+        "attendees": "all_company",
+        "description": "Informal social gathering to relax and connect with colleagues after work hours."
+    }
+]
